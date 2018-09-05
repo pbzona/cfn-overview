@@ -1,0 +1,718 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Resources": {
+    "MyWebApp": {
+      "Type": "AWS::EC2::VPC",
+      "Properties": {
+        "CidrBlock": "12.0.0.0/16",
+        "InstanceTenancy": "default",
+        "EnableDnsSupport": "true",
+        "EnableDnsHostnames": "false",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "MyWebApp"
+          }
+        ]
+      }
+    },
+    "snPublicB": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "CidrBlock": "12.0.1.0/24",
+        "AvailabilityZone": "us-east-1b",
+        "VpcId": {
+          "Ref": "MyWebApp"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PublicB"
+          }
+        ]
+      }
+    },
+    "snPrivateA": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "CidrBlock": "12.0.2.0/24",
+        "AvailabilityZone": "us-east-1a",
+        "VpcId": {
+          "Ref": "MyWebApp"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PrivateA"
+          }
+        ]
+      }
+    },
+    "snPublicA": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "CidrBlock": "12.0.0.0/24",
+        "AvailabilityZone": "us-east-1a",
+        "VpcId": {
+          "Ref": "MyWebApp"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PublicA"
+          }
+        ]
+      }
+    },
+    "snPrivateB": {
+      "Type": "AWS::EC2::Subnet",
+      "Properties": {
+        "CidrBlock": "12.0.3.0/24",
+        "AvailabilityZone": "us-east-1b",
+        "VpcId": {
+          "Ref": "MyWebApp"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PrivateB"
+          }
+        ]
+      }
+    },
+    "elasticIP": {
+      "Type": "AWS::EC2::EIP",
+      "Properties": {
+        "Domain": "vpc"
+      },
+      "DependsOn": "myigw"
+    },
+    "natgw": {
+      "DependsOn": "myigw",
+      "Type": "AWS::EC2::NatGateway",
+      "Properties": {
+        "AllocationId": {
+          "Fn::GetAtt": ["elasticIP", "AllocationId"]
+        },
+        "SubnetId": {
+          "Ref": "snPublicA"
+        }
+      }
+    },
+    "natRoute": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "privateRT"
+        },
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "NatGatewayId": {
+          "Ref": "natgw"
+        }
+      }
+    },
+    "myigw": {
+      "Type": "AWS::EC2::InternetGateway",
+      "Properties": {
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "myIGW"
+          }
+        ]
+      }
+    },
+    "doptb89d7ec0": {
+      "Type": "AWS::EC2::DHCPOptions",
+      "Properties": {
+        "DomainName": "ec2.internal",
+        "DomainNameServers": ["AmazonProvidedDNS"]
+      }
+    },
+    "acl17c3e86d": {
+      "Type": "AWS::EC2::NetworkAcl",
+      "Properties": {
+        "VpcId": {
+          "Ref": "MyWebApp"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PublicACL"
+          }
+        ]
+      }
+    },
+    "aclb4c5eece": {
+      "Type": "AWS::EC2::NetworkAcl",
+      "Properties": {
+        "VpcId": {
+          "Ref": "MyWebApp"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PrivateACL"
+          }
+        ]
+      }
+    },
+    "publicRT": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "MyWebApp"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PublicRT"
+          }
+        ]
+      }
+    },
+    "privateRT": {
+      "Type": "AWS::EC2::RouteTable",
+      "Properties": {
+        "VpcId": {
+          "Ref": "MyWebApp"
+        },
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "PrivateRT"
+          }
+        ]
+      }
+    },
+    "elbwebAppELB": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "Subnets": [
+          {
+            "Ref": "snPublicB"
+          },
+          {
+            "Ref": "snPublicA"
+          }
+        ],
+        "HealthCheck": {
+          "HealthyThreshold": "3",
+          "Interval": "10",
+          "Target": "TCP:22",
+          "Timeout": "5",
+          "UnhealthyThreshold": "2"
+        },
+        "ConnectionDrainingPolicy": {
+          "Enabled": "true",
+          "Timeout": "300"
+        },
+        "ConnectionSettings": {
+          "IdleTimeout": "60"
+        },
+        "CrossZone": "true",
+        "Instances": [
+          {
+            "Ref": "WebAppB"
+          },
+          {
+            "Ref": "WebAppA"
+          }
+        ],
+        "SecurityGroups": [
+          {
+            "Ref": "sgelbSG"
+          }
+        ],
+        "Listeners": [
+          {
+            "InstancePort": "80",
+            "LoadBalancerPort": "80",
+            "Protocol": "HTTP",
+            "InstanceProtocol": "HTTP"
+          }
+        ]
+      }
+    },
+    "WebAppB": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "DisableApiTermination": "false",
+        "InstanceInitiatedShutdownBehavior": "stop",
+        "ImageId": "%ami-43%",
+        "InstanceType": "t2.micro",
+        "Monitoring": "false",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "WebAppB"
+          }
+        ],
+        "NetworkInterfaces": [
+          {
+            "DeleteOnTermination": "true",
+            "Description": "Primary network interface",
+            "DeviceIndex": 0,
+            "SubnetId": {
+              "Ref": "snPrivateB"
+            },
+            "PrivateIpAddresses": [
+              {
+                "PrivateIpAddress": "12.0.3.161",
+                "Primary": "true"
+              }
+            ],
+            "GroupSet": [
+              {
+                "Ref": "sgWebAppSG"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "WebAppA": {
+      "Type": "AWS::EC2::Instance",
+      "Properties": {
+        "DisableApiTermination": "false",
+        "InstanceInitiatedShutdownBehavior": "stop",
+        "ImageId": "%ami-43%",
+        "InstanceType": "t2.micro",
+        "Monitoring": "false",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "WebAppA"
+          }
+        ],
+        "NetworkInterfaces": [
+          {
+            "DeleteOnTermination": "true",
+            "Description": "Primary network interface",
+            "DeviceIndex": 0,
+            "SubnetId": {
+              "Ref": "snPrivateA"
+            },
+            "PrivateIpAddresses": [
+              {
+                "PrivateIpAddress": "12.0.2.184",
+                "Primary": "true"
+              }
+            ],
+            "GroupSet": [
+              {
+                "Ref": "sgWebAppSG"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "sgWebAppSG": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Security Group for application servers",
+        "VpcId": {
+          "Ref": "MyWebApp"
+        }
+      }
+    },
+    "sgelbSG": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Security Group for the ELB",
+        "VpcId": {
+          "Ref": "MyWebApp"
+        }
+      }
+    },
+    "acl34": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "true",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "100",
+        "PortRange": {
+          "From": "22",
+          "To": "22"
+        },
+        "NetworkAclId": {
+          "Ref": "acl17c3e86d"
+        }
+      }
+    },
+    "acl35": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "true",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "200",
+        "PortRange": {
+          "From": "80",
+          "To": "80"
+        },
+        "NetworkAclId": {
+          "Ref": "acl17c3e86d"
+        }
+      }
+    },
+    "acl36": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Egress": "true",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "300",
+        "PortRange": {
+          "From": "1024",
+          "To": "65535"
+        },
+        "NetworkAclId": {
+          "Ref": "acl17c3e86d"
+        }
+      }
+    },
+    "acl37": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "100",
+        "PortRange": {
+          "From": "22",
+          "To": "22"
+        },
+        "NetworkAclId": {
+          "Ref": "acl17c3e86d"
+        }
+      }
+    },
+    "acl38": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "200",
+        "PortRange": {
+          "From": "80",
+          "To": "80"
+        },
+        "NetworkAclId": {
+          "Ref": "acl17c3e86d"
+        }
+      }
+    },
+    "acl39": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "300",
+        "PortRange": {
+          "From": "1024",
+          "To": "65535"
+        },
+        "NetworkAclId": {
+          "Ref": "acl17c3e86d"
+        }
+      }
+    },
+    "acl42": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "12.0.0.0/24",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "100",
+        "PortRange": {
+          "From": "22",
+          "To": "22"
+        },
+        "NetworkAclId": {
+          "Ref": "aclb4c5eece"
+        }
+      }
+    },
+    "acl43": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "12.0.0.0/24",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "200",
+        "PortRange": {
+          "From": "80",
+          "To": "80"
+        },
+        "NetworkAclId": {
+          "Ref": "aclb4c5eece"
+        }
+      }
+    },
+    "acl44": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "12.0.1.0/24",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "201",
+        "PortRange": {
+          "From": "80",
+          "To": "80"
+        },
+        "NetworkAclId": {
+          "Ref": "aclb4c5eece"
+        }
+      }
+    },
+    "acl45": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "300",
+        "PortRange": {
+          "From": "3306",
+          "To": "3306"
+        },
+        "NetworkAclId": {
+          "Ref": "aclb4c5eece"
+        }
+      }
+    },
+    "acl46": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "400",
+        "PortRange": {
+          "From": "25",
+          "To": "25"
+        },
+        "NetworkAclId": {
+          "Ref": "aclb4c5eece"
+        }
+      }
+    },
+    "acl47": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Protocol": "6",
+        "RuleAction": "allow",
+        "RuleNumber": "500",
+        "PortRange": {
+          "From": "1024",
+          "To": "65535"
+        },
+        "NetworkAclId": {
+          "Ref": "aclb4c5eece"
+        }
+      }
+    },
+    "acl48": {
+      "Type": "AWS::EC2::NetworkAclEntry",
+      "Properties": {
+        "CidrBlock": "0.0.0.0/0",
+        "Protocol": "-1",
+        "Egress": true,
+        "RuleAction": "allow",
+        "RuleNumber": "100",
+        "NetworkAclId": {
+          "Ref": "aclb4c5eece"
+        }
+      }
+    },
+    "subnetacl49": {
+      "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties": {
+        "NetworkAclId": {
+          "Ref": "aclb4c5eece"
+        },
+        "SubnetId": {
+          "Ref": "snPrivateA"
+        }
+      }
+    },
+    "subnetacl50": {
+      "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties": {
+        "NetworkAclId": {
+          "Ref": "acl17c3e86d"
+        },
+        "SubnetId": {
+          "Ref": "snPublicB"
+        }
+      }
+    },
+    "subnetacl51": {
+      "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties": {
+        "NetworkAclId": {
+          "Ref": "acl17c3e86d"
+        },
+        "SubnetId": {
+          "Ref": "snPublicA"
+        }
+      }
+    },
+    "subnetacl52": {
+      "Type": "AWS::EC2::SubnetNetworkAclAssociation",
+      "Properties": {
+        "NetworkAclId": {
+          "Ref": "aclb4c5eece"
+        },
+        "SubnetId": {
+          "Ref": "snPrivateB"
+        }
+      }
+    },
+    "gw15": {
+      "Type": "AWS::EC2::VPCGatewayAttachment",
+      "Properties": {
+        "VpcId": {
+          "Ref": "MyWebApp"
+        },
+        "InternetGatewayId": {
+          "Ref": "myigw"
+        }
+      }
+    },
+    "subnetroute51": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "publicRT"
+        },
+        "SubnetId": {
+          "Ref": "snPublicA"
+        }
+      }
+    },
+    "subnetroute52": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "publicRT"
+        },
+        "SubnetId": {
+          "Ref": "snPublicB"
+        }
+      }
+    },
+    "subnetroute53": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "privateRT"
+        },
+        "SubnetId": {
+          "Ref": "snPrivateB"
+        }
+      }
+    },
+    "subnetroute54": {
+      "Type": "AWS::EC2::SubnetRouteTableAssociation",
+      "Properties": {
+        "RouteTableId": {
+          "Ref": "privateRT"
+        },
+        "SubnetId": {
+          "Ref": "snPrivateA"
+        }
+      }
+    },
+    "route23": {
+      "Type": "AWS::EC2::Route",
+      "Properties": {
+        "DestinationCidrBlock": "0.0.0.0/0",
+        "RouteTableId": {
+          "Ref": "publicRT"
+        },
+        "GatewayId": {
+          "Ref": "myigw"
+        }
+      },
+      "DependsOn": "gw15"
+    },
+    "dchpassoc15": {
+      "Type": "AWS::EC2::VPCDHCPOptionsAssociation",
+      "Properties": {
+        "VpcId": {
+          "Ref": "MyWebApp"
+        },
+        "DhcpOptionsId": {
+          "Ref": "doptb89d7ec0"
+        }
+      }
+    },
+    "ingress70": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "sgWebAppSG"
+        },
+        "IpProtocol": "tcp",
+        "FromPort": "80",
+        "ToPort": "80",
+        "CidrIp": "0.0.0.0/0"
+      }
+    },
+    "ingress71": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "sgWebAppSG"
+        },
+        "IpProtocol": "tcp",
+        "FromPort": "22",
+        "ToPort": "22",
+        "CidrIp": "0.0.0.0/0"
+      }
+    },
+    "ingress72": {
+      "Type": "AWS::EC2::SecurityGroupIngress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "sgelbSG"
+        },
+        "IpProtocol": "tcp",
+        "FromPort": "80",
+        "ToPort": "80",
+        "CidrIp": "0.0.0.0/0"
+      }
+    },
+    "egress48": {
+      "Type": "AWS::EC2::SecurityGroupEgress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "sgWebAppSG"
+        },
+        "IpProtocol": "-1",
+        "CidrIp": "0.0.0.0/0"
+      }
+    },
+    "egress49": {
+      "Type": "AWS::EC2::SecurityGroupEgress",
+      "Properties": {
+        "GroupId": {
+          "Ref": "sgelbSG"
+        },
+        "IpProtocol": "-1",
+        "CidrIp": "0.0.0.0/0"
+      }
+    }
+  },
+  "Description": "Networking for Security #1"
+}
